@@ -22,7 +22,7 @@ float factorCalibracionBascula = 74325.00 / (723.2 - 15);
 
 int incomingByte = 0;
 
-int taremoi = 1;
+volatile int taremoi = 1;
 
 float VelMax;
 float PesoMax;

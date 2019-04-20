@@ -14,19 +14,21 @@
 #define TEST_PIN 2
 #define SALIDA_ESC_PIN 10
 
+const unsigned long TIEMPO_PASO_TEST = 1000;
+
 U8G2_SSD1306_128X64_NONAME_1_HW_I2C u8g2(U8G2_R0, /* reset=*/U8X8_PIN_NONE);
 
-int test = 0;
-float inicio_test = 0;
+volatile int test = 0;
+float iteracion_paso_test = 0;
 
 Servo ESC;
 int vel_real = 0;
 int vAhora_real = 0;
 
 float voltage_final = 0;
-int velocidad = 1000;
-int vAhora = 1000;
-int velmin = 1000;
+volatile int velocidad = 0;
+int vAhora = 0;
+int velmin = 0;
 int incremento = 20;
 int voltage_max = 12.0;
 
@@ -40,6 +42,8 @@ float Vtotal = 0.0;       // Total
 float Vmedia = 0.0;       // Promedio
 
 unsigned long timeout_pwm_micros = 50000;
+
+volatile unsigned long siguientePaso = 0; // millis en los que tiene que saltar al siguiente paso
 
 void test_funcion();
 
@@ -78,13 +82,15 @@ bool switchActivado()
 
 void test_funcion()
 {
-  test = test + 1;
-  if (test > 1 && velocidad > 0)
+  static unsigned long ultima_interrupcion = 0;
+  unsigned long tiempo_actual = micros() / 1000;
+  if (tiempo_actual - ultima_interrupcion > 100) // debounce
   {
-    test = 0;
+    test = !test;
+    velocidad = 0;
+    siguientePaso = 0;
   }
-  velocidad = 0;
-  inicio_test = 0;
+  ultima_interrupcion = tiempo_actual;
 }
 
 void printSerial()
@@ -105,28 +111,27 @@ void printSerial()
     Serial.println(vAhora);
   }
 }
+
 void loop()
 {
-
   voltage_final = leerVoltaje();
 
-  if (test == 1)
+  if (test)
   {
-
-    inicio_test = inicio_test + 1;
-
-    if (inicio_test > 100)
+    if (siguientePaso == 0)
     {
-      if (velocidad < 101)
-      {
-        velocidad = velocidad + 1;
-        inicio_test = 0;
-      }
-      else
-      {
-        test = 0;
-        velocidad = 0;
-      }
+      velocidad = 0;
+      siguientePaso = millis() + TIEMPO_PASO_TEST;
+    }
+    if (millis() > siguientePaso)
+    {
+      siguientePaso = millis() + TIEMPO_PASO_TEST;
+      velocidad++;
+    }
+    if (velocidad > 100)
+    {
+      test = 0;
+      velocidad = 0;
     }
   }
   else
@@ -180,15 +185,13 @@ void loop()
 
   String automatico;
 
-  if (test == 1)
+  if (test)
   {
-
     automatico = "T";
     vAhora_real = velocidad;
   }
   else
   {
-
     if (switchActivado())
     {
       ESC.writeMicroseconds(vAhora);
