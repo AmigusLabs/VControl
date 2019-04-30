@@ -25,7 +25,7 @@ Servo ESC;
 int vel_real = 0;
 int vAhora_real = 0;
 
-string texto_version = "A";
+string texto_version = "4A";
 
 float voltage_final = 0;
 volatile int velocidad = 0;
