@@ -145,7 +145,7 @@ void loop()
       u8g2.setFont(u8g2_font_logisoso16_tr);
       u8g2.drawStr(5, 38, "@migus Labs");
       u8g2.setFont(u8g2_font_helvR08_tr);
-      u8g2.drawStr(18, 54, "Power Module v4B");
+      u8g2.drawStr(18, 54, texto_version);
       u8g2.setFont(u8g2_font_helvR08_tr);
       u8g2.drawStr(32, 64, "Calibrando...");
     } while (u8g2.nextPage());
