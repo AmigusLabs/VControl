@@ -24,7 +24,7 @@ int incomingByte = 0;
 
 volatile int taremoi = 1;
 
-string texto_version = "B";
+string texto_version = "4B";
 
 float VelMax;
 float PesoMax;
