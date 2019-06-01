@@ -25,7 +25,7 @@ Servo ESC;
 int vel_real = 0;
 int vAhora_real = 0;
 
-string texto_version = "4A";
+const char *texto_version = "Power Module v4A";
 
 float voltage_final = 0;
 volatile int velocidad = 0;
@@ -55,7 +55,7 @@ void setup()
   Serial.begin(9600);
 
   u8g2.begin();
-  pantallaBienvenida(u8g2);
+  pantallaBienvenida(u8g2, texto_version);
 
   pinMode(TEST_PIN, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(TEST_PIN), test_funcion, FALLING);

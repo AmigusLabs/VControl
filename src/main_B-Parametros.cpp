@@ -15,7 +15,7 @@
 #define TARA_PIN 2
 #define RECEPTOR_CH3_PIN A1
 
-U8G2_SSD1306_128X64_NONAME_1_HW_I2C u8g2(U8G2_R0, /* reset=*/U8X8_PIN_NONE);
+U8G2_SSD1306_128X64_NONAME_1_HW_I2C u8g2(U8G2_R0, /* reset */ U8X8_PIN_NONE);
 Adafruit_SI1145 uv = Adafruit_SI1145();
 
 float factorCalibracionBascula = 74325.00 / (723.2 - 15);
@@ -24,7 +24,7 @@ int incomingByte = 0;
 
 volatile int taremoi = 1;
 
-string texto_version = "4B";
+const char *texto_version = "Power Module v4B";
 
 float VelMax;
 float PesoMax;
@@ -73,7 +73,7 @@ void setup()
   Serial.begin(9600);
 
   u8g2.begin();
-  pantallaBienvenida(u8g2);
+  pantallaBienvenida(u8g2, texto_version);
 
   if (!uv.begin())
   {
