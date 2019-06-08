@@ -10,12 +10,25 @@
 //#include <EEPROM.h>
 #include <Wire.h>
 #include "Adafruit_SI1145.h"
+#include <SoftwareSerial.h>
 
 #define RESET_PIN 3
 #define TARA_PIN 2
 #define RECEPTOR_CH3_PIN A1
 
-U8G2_SSD1306_128X64_NONAME_1_HW_I2C u8g2(U8G2_R0, /* reset=*/U8X8_PIN_NONE);
+#define minimo_PWM 995
+#define maximo_PWM 1989
+
+int testIndice;
+char serialBuffer[6];
+void ejecutaBuffer();
+int test = 0;
+double testSuma = 0;
+int testSumacontador = 0;
+
+SoftwareSerial softSer(7, 8);
+
+U8G2_SSD1306_128X64_NONAME_1_HW_I2C u8g2(U8G2_R0, /* reset */ U8X8_PIN_NONE);
 Adafruit_SI1145 uv = Adafruit_SI1145();
 
 float factorCalibracionBascula = 74325.00 / (723.2 - 15);
@@ -24,8 +37,10 @@ int incomingByte = 0;
 
 volatile int taremoi = 1;
 
-float VelMax;
-float PesoMax;
+const char *texto_version = "Power Module v4B";
+
+float velMax;
+float pesoMax;
 
 float Visindex;
 float IRindex;
@@ -38,7 +53,7 @@ int vAhora_real = 0;
 float peso = 0;
 
 float voltage_final = 0;
-int velocidad = 1000;
+int velocidadPWM = 1000;
 int vAhora = 1000;
 int velmin = 1000;
 int incremento = 20;
@@ -61,17 +76,19 @@ void tare()
 
 void reset_data()
 {
-  PesoMax = 0;
-  VelMax = 0;
+  pesoMax = 0;
+  velMax = 0;
 }
 
 void setup()
 {
   analogReference(INTERNAL);
   Serial.begin(9600);
+  softSer.begin(9600);
 
+  //u8g2_SetI2CAddress(u8g2.getU8g2(), 0x78);
   u8g2.begin();
-  pantallaBienvenida(u8g2);
+  pantallaBienvenida(u8g2, texto_version);
 
   if (!uv.begin())
   {
@@ -94,6 +111,7 @@ void setup()
 
   ESC.attach(10); // salida al ESC a D10
 
+  serialBuffer[5] = '\0';
   //delay(2000);
 }
 
@@ -108,7 +126,7 @@ void printSerial()
     Serial.print("V: ");
     Serial.println(voltage_final);
     Serial.print("Vel: ");
-    Serial.println(velocidad);
+    Serial.println(velocidadPWM);
     Serial.print("vAhora: ");
     Serial.println(vAhora);
     Serial.print("Fuerza: ");
@@ -127,9 +145,9 @@ void loop()
 
   voltage_final = leerVoltaje();
 
-  velocidad = pulseIn(RECEPTOR_CH3_PIN, HIGH);
+  velocidadPWM = pulseIn(RECEPTOR_CH3_PIN, HIGH);
 
-  vAhora_real = map(velocidad, 995, 1989, 0, 100);
+  vAhora_real = map(velocidadPWM, minimo_PWM, maximo_PWM, 0, 100);
   if (vAhora_real < 0)
   {
     vAhora_real = 0;
@@ -143,7 +161,7 @@ void loop()
       u8g2.setFont(u8g2_font_logisoso16_tr);
       u8g2.drawStr(5, 38, "@migus Labs");
       u8g2.setFont(u8g2_font_helvR08_tr);
-      u8g2.drawStr(18, 54, "Power Module v4B");
+      u8g2.drawStr(18, 54, texto_version);
       u8g2.setFont(u8g2_font_helvR08_tr);
       u8g2.drawStr(32, 64, "Calibrando...");
     } while (u8g2.nextPage());
@@ -179,10 +197,10 @@ void loop()
     }
   }
 
-  if (peso > PesoMax)
+  if (peso > pesoMax)
   {
-    PesoMax = peso;
-    VelMax = vAhora_real;
+    pesoMax = peso;
+    velMax = vAhora_real;
   }
 
   Visindex = uv.readVisible();
@@ -204,10 +222,10 @@ void loop()
   dtostrf(UVindex, 5, 2, UV);
 
   char VM[10];
-  dtostrf(VelMax, 5, 0, VM);
+  dtostrf(velMax, 5, 0, VM);
 
   char PM[10];
-  dtostrf(PesoMax, 5, 0, PM);
+  dtostrf(pesoMax, 5, 0, PM);
 
   u8g2.firstPage();
   do
@@ -254,6 +272,76 @@ void loop()
     }
   }
 */
-  printSerial();
+  while (softSer.available())
+  {
+    char chr = softSer.read();
+    // Serial.print(chr);
+    //    return;
+    if (chr == '\r')
+    {
+    }
+    else if (chr == '\n')
+    {
+      ejecutaBuffer();
+    }
+    else
+    {
+      serialBuffer[0] = serialBuffer[1];
+      serialBuffer[1] = serialBuffer[2];
+      serialBuffer[2] = serialBuffer[3];
+      serialBuffer[3] = serialBuffer[4];
+      serialBuffer[4] = chr;
+    }
+  }
+  if (test)
+  {
+    testSuma += peso;
+    testSumacontador++;
+  }
+  //printSerial();
 }
+
+void ejecutaBuffer()
+{
+  if (strcmp(serialBuffer, "<s-t>") == 0)
+  {
+    // inicio del test
+    test = 1;
+    pesoMax = 0;
+    testIndice = 0;
+    testSuma = 0;
+    testSumacontador = 0;
+  }
+  else if (strcmp(serialBuffer, "<e-t>") == 0)
+  {
+    // fin del test
+    test = 0;
+    testIndice = 0;
+  }
+  else
+  {
+    if (strncmp(serialBuffer, "<v", 2) == 0)
+    {
+      int testAnterior = testIndice;
+      testIndice = atol(&serialBuffer[2]);
+      if (testIndice > 0)
+      {
+        //Serial.print("X=");
+        //Serial.print(testAnterior);
+        //Serial.print(",Y=");
+        Serial.print(testAnterior);
+        Serial.print(",");
+        Serial.println(testSumacontador == 0 ? 0 : testSuma / testSumacontador);
+        testSuma = 0;
+        testSumacontador = 0;
+      }
+    }
+    else
+    {
+      Serial.print("Unknown command ");
+      Serial.println(serialBuffer);
+    }
+  }
+}
+
 #endif

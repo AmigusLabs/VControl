@@ -14,7 +14,7 @@ float voltajeMaximo()
 float leerVoltaje()
 {
   int valor = analogRead(PIN_VOLTAJE);
-  Serial.println(valor);
+  //Serial.println(valor);
   double v = (valor * VREF) / 1024.0;
   return (v / (R2 / (R1 + R2)));
 }

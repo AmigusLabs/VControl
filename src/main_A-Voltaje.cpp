@@ -5,14 +5,22 @@
 #include "pantalla.h"
 
 #include <Arduino.h>
+#include <string.h>
 #include <Servo.h>
 #include <U8g2lib.h>
 #include <Wire.h>
+#include <SoftwareSerial.h>
 
 #define RECEPTOR_CH3_PIN A1
 #define RECEPTOR_CH5_PIN A2
 #define TEST_PIN 2
 #define SALIDA_ESC_PIN 10
+
+#define minimo_PWM 995
+#define maximo_PWM 1989
+
+SoftwareSerial softSer(7, 8);
+char serialBuffer[6];
 
 const unsigned long TIEMPO_PASO_TEST = 1000;
 
@@ -22,11 +30,13 @@ volatile int test = 0;
 float iteracion_paso_test = 0;
 
 Servo ESC;
-int vel_real = 0;
+int velocidadReal = 0;
 int vAhora_real = 0;
 
+const char *texto_version = "Power Module v4A";
+
 float voltage_final = 0;
-volatile int velocidad = 0;
+volatile int velocidadPWM = 0;
 int vAhora = 0;
 int velmin = 0;
 int incremento = 20;
@@ -51,9 +61,10 @@ void setup()
 {
   analogReference(INTERNAL);
   Serial.begin(9600);
+  softSer.begin(9600);
 
   u8g2.begin();
-  pantallaBienvenida(u8g2);
+  pantallaBienvenida(u8g2, texto_version);
 
   pinMode(TEST_PIN, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(TEST_PIN), test_funcion, FALLING);
@@ -87,7 +98,7 @@ void test_funcion()
   if (tiempo_actual - ultima_interrupcion > 100) // debounce
   {
     test = !test;
-    velocidad = 0;
+    velocidadPWM = 0;
     siguientePaso = 0;
   }
   ultima_interrupcion = tiempo_actual;
@@ -105,7 +116,7 @@ void printSerial()
     Serial.print("V: ");
     Serial.println(voltage_final);
     Serial.print("Vel: ");
-    Serial.println(velocidad);
+    Serial.println(velocidadPWM);
     Serial.print("vAhora: ");
 
     Serial.println(vAhora);
@@ -116,55 +127,65 @@ void loop()
 {
   voltage_final = leerVoltaje();
 
+  unsigned long value = pulseIn(RECEPTOR_CH3_PIN, HIGH, timeout_pwm_micros);
+  value += pulseIn(RECEPTOR_CH3_PIN, HIGH, timeout_pwm_micros);
+  value += pulseIn(RECEPTOR_CH3_PIN, HIGH, timeout_pwm_micros);
+  value += pulseIn(RECEPTOR_CH3_PIN, HIGH, timeout_pwm_micros);
+  velocidadPWM = value / 4;
+
   if (test)
   {
     if (siguientePaso == 0)
     {
-      velocidad = 0;
+      softSer.println("<s-t>");
+      delay(500);
+      vAhora_real = 0;
       siguientePaso = millis() + TIEMPO_PASO_TEST;
     }
     if (millis() > siguientePaso)
     {
       siguientePaso = millis() + TIEMPO_PASO_TEST;
-      velocidad++;
+      vAhora_real++;
+      if (vAhora_real <= 100)
+      {
+        sprintf(serialBuffer, "<v%03d", vAhora_real);
+        softSer.println(serialBuffer);
+      }
     }
-    if (velocidad > 100)
+    if (vAhora_real > 100)
     {
       test = 0;
-      velocidad = 0;
+      vAhora_real = 0;
+      softSer.println("<e-t>");
     }
-  }
-  else
-  {
-    unsigned long value = pulseIn(RECEPTOR_CH3_PIN, HIGH, timeout_pwm_micros);
-    value += pulseIn(RECEPTOR_CH3_PIN, HIGH, timeout_pwm_micros);
-    value += pulseIn(RECEPTOR_CH3_PIN, HIGH, timeout_pwm_micros);
-    value += pulseIn(RECEPTOR_CH3_PIN, HIGH, timeout_pwm_micros);
-    velocidad = value / 4;
+    velocidadPWM = map(vAhora_real, 0, 100, minimo_PWM, maximo_PWM);
   }
 
   if (voltage_final < voltage_max && vAhora >= velmin)
   {
     vAhora = vAhora - incremento;
   }
-  else if (vAhora < velocidad)
+  else if (vAhora < velocidadPWM)
   {
     vAhora = vAhora + incremento;
   }
   else
   {
-    vAhora = velocidad;
+    vAhora = velocidadPWM;
   }
 
-  vel_real = map(velocidad, 995, 1989, 0, 100);
-  vAhora_real = map(vAhora, 995, 1989, 0, 100);
+  if (!test)
+  {
+    velocidadReal = map(velocidadPWM, minimo_PWM, maximo_PWM, 0, 100);
+    vAhora_real = map(vAhora, minimo_PWM, maximo_PWM, 0, 100);
+  }
   if (vAhora_real < 0)
   {
     vAhora_real = 0;
   }
-  if (vel_real < 0)
+  if (velocidadReal < 0)
   {
-    vel_real = 0;
+    velocidadReal = 0;
   }
 
   readings[index] = voltage_final;
@@ -183,33 +204,33 @@ void loop()
 
   Vmedia = Vtotal / lecturas;
 
-  String automatico;
+  char *automatico;
 
   if (test)
   {
-    automatico = "T";
-    vAhora_real = velocidad;
+    automatico = (char *)"T";
+    ESC.writeMicroseconds(velocidadPWM);
   }
   else
   {
     if (switchActivado())
     {
       ESC.writeMicroseconds(vAhora);
-      automatico = "A";
+      automatico = (char *)"A";
     }
     else
     {
-      ESC.writeMicroseconds(velocidad);
-      automatico = "M";
+      ESC.writeMicroseconds(velocidadPWM);
+      automatico = (char *)"M";
 
-      vAhora_real = vel_real;
+      vAhora_real = velocidadReal;
     }
   }
 
   char vA[10];
   dtostrf(vAhora_real, 5, 0, vA);
   char vR[10];
-  dtostrf(vel_real, 5, 0, vR);
+  dtostrf(velocidadReal, 5, 0, vR);
   char vo[10];
   dtostrf(voltage_final, 5, 2, vo);
   char voM[10];
@@ -235,18 +256,7 @@ void loop()
 
     u8g2.setFont(u8g2_font_tenstamps_mf);
 
-    if (automatico == "A")
-    {
-      u8g2.drawStr(110, 12, "A");
-    }
-    if (automatico == "M")
-    {
-      u8g2.drawStr(110, 12, "M");
-    }
-    if (automatico == "T")
-    {
-      u8g2.drawStr(110, 12, "T");
-    }
+    u8g2.drawStr(110, 12, automatico);
 
   } while (u8g2.nextPage());
 
